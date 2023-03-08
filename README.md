@@ -1,4 +1,4 @@
-# A simple naive Markdown compile in Rust
+# A simple naive Markdown compiler in Rust
  \- Ben Beshara, 2023
  
 This is a contrived demo designed for me to learn more about writing applications in Rust. There is a rust markdown library, use that, this is just a learning exercise.
