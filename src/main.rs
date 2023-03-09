@@ -1,6 +1,6 @@
 use regex::Regex;
 use std::io::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 struct Args {
     in_path: std::path::PathBuf,
@@ -14,22 +14,25 @@ struct Element {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let help_string: String = format!("Usage: {0} <input> <output>", args[0]);
+    println!("Usage: {0} <input> <output>", args[0]);
 
     if args.len() < 3 {
-        println!("{0}", help_string);
         std::process::exit(0);
     }
 
     let args = Args {
-        in_path: Path::new(&args[1]).to_owned(),
-        out_path: Path::new(&args[2]).to_owned(),
+        in_path: PathBuf::from(&args[1]),
+        out_path: PathBuf::from(&args[2]),
     };
 
-    println!("{0}\nStarting...", help_string);
+    let mut failed_files = 0;
+    let mut total_files = 1;
+
+    println!("Markd'ing {0}: Begin", &args.in_path.to_string_lossy());
 
     if args.in_path.is_file() {
         if let Err(error) = parse_file(&args.in_path, &args.out_path) {
+            failed_files += 1;
             println!(
                 "Parsing error in file {0} - {1}",
                 &args.in_path.to_string_lossy(),
@@ -48,6 +51,8 @@ fn main() {
             std::process::exit(1);
         }
 
+        println!("Attempting to compile item(s)...");
+
         if !args.out_path.is_dir() {
             if let Err(error) = std::fs::create_dir(&args.out_path) {
                 println!(
@@ -59,11 +64,13 @@ fn main() {
         }
 
         for file in dir.unwrap() {
+            total_files += 1;
             let out_name = &args.out_path;
             if let Err(error) = parse_file(
                 &file.as_ref().unwrap().path(),
                 &out_name.join(file.as_ref().unwrap().file_name()),
             ) {
+                failed_files += 1;
                 println!(
                     "Notice while parsing file {0}: \"{1}\"",
                     &file.as_ref().unwrap().path().to_string_lossy(),
@@ -73,7 +80,11 @@ fn main() {
         }
     }
 
-    println!("Done!");
+    let successful_files = total_files - failed_files;
+    println!(
+        "Done! {0} succeeded, {1} failed",
+        successful_files, failed_files
+    );
 }
 
 fn parse_file(in_file: &Path, out_file: &Path) -> Result<(), Error> {
