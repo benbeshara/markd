@@ -1,7 +1,6 @@
 use regex::Regex;
-use std::thread;
-use std::path::{Path};
 use std::io::Error;
+use std::path::Path;
 
 struct Args {
     in_path: std::path::PathBuf,
@@ -13,54 +12,65 @@ struct Element {
     pattern: Regex,
 }
 
-static HELP_STRING: &str = r#"Usage: markd <input> <output>"#;
-
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    
+    let help_string: String = format!("Usage: {0} <input> <output>", args[0]);
+
     if args.len() < 3 {
-        println!("{0}", HELP_STRING);
+        println!("{0}", help_string);
         std::process::exit(0);
     }
-    
-    let in_file = Path::new(&args[1]);
-    let out_file = Path::new(&args[2]);
-    
-    println!("{0}\nStarting...", HELP_STRING);
 
     let args = Args {
-        in_path: in_file.to_owned(),
-        out_path: out_file.to_owned(),
+        in_path: Path::new(&args[1]).to_owned(),
+        out_path: Path::new(&args[2]).to_owned(),
     };
+
+    println!("{0}\nStarting...", help_string);
 
     if args.in_path.is_file() {
         if let Err(error) = parse_file(&args.in_path, &args.out_path) {
-            println!("Parsing error in file {0} - {1}", &args.in_path.to_string_lossy(), error);
+            println!(
+                "Parsing error in file {0} - {1}",
+                &args.in_path.to_string_lossy(),
+                error
+            );
         };
     } else if args.in_path.is_dir() {
         let dir = args.in_path.read_dir();
-        
+
         if let Err(error) = dir {
-            println!("Could not open directory {0} - {1}", &args.in_path.to_string_lossy(), error);
+            println!(
+                "Could not open directory {0} - {1}",
+                &args.in_path.to_string_lossy(),
+                error
+            );
             std::process::exit(1);
         }
 
         if !args.out_path.is_dir() {
             if let Err(error) = std::fs::create_dir(&args.out_path) {
-                println!("could not create output directory {0} - {1}", &args.out_path.to_string_lossy(), error)
+                println!(
+                    "could not create output directory {0} - {1}",
+                    &args.out_path.to_string_lossy(),
+                    error
+                )
             }
         }
 
-        let handle = thread::spawn(move || {
-            for file in dir.unwrap() {
-                let out_name = &args.out_path;
-                if let Err(error) = parse_file(&file.as_ref().unwrap().path(), &out_name.join(file.as_ref().unwrap().file_name())) {
-                    println!("Parsing error in file {0} - {1}", &args.in_path.to_string_lossy(), error);
-                }
+        for file in dir.unwrap() {
+            let out_name = &args.out_path;
+            if let Err(error) = parse_file(
+                &file.as_ref().unwrap().path(),
+                &out_name.join(file.as_ref().unwrap().file_name()),
+            ) {
+                println!(
+                    "Notice while parsing file {0}: \"{1}\"",
+                    &file.as_ref().unwrap().path().to_string_lossy(),
+                    error
+                );
             }
-        });
-
-        handle.join().unwrap();
+        }
     }
 
     println!("Done!");
@@ -106,7 +116,10 @@ fn parse_file(in_file: &Path, out_file: &Path) -> Result<(), Error> {
         .starts_with('.')
         || !in_file.exists()
     {
-        return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Skipping hidden file"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Skipping hidden file",
+        ));
     }
 
     println!(
@@ -116,13 +129,13 @@ fn parse_file(in_file: &Path, out_file: &Path) -> Result<(), Error> {
     );
 
     let mut response = std::fs::read_to_string(in_file)?;
-    
+
     println!("Parsing...");
-    
+
     for r in v {
         response = r.pattern.replace_all(&response, r.tag).to_string();
     }
-    
+
     std::fs::write(out_file.with_extension("html"), response)?;
     Ok(())
 }
