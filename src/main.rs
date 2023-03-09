@@ -14,7 +14,6 @@ struct Element {
 static HELP_STRING: &str = r#"Usage: markd <input> <output>"#;
 
 fn main() {
-    println!("Starting...");
     if std::env::args().len() < 3 {
         println!("{0}", HELP_STRING);
         std::process::exit(0);
@@ -24,6 +23,8 @@ fn main() {
         std::env::args().nth(1).expect(HELP_STRING),
         std::env::args().nth(2).expect(HELP_STRING),
     );
+    
+    println!("{0}\nStarting...", HELP_STRING);
 
     let args = Args {
         in_path: std::path::PathBuf::from(in_file),
@@ -31,30 +32,30 @@ fn main() {
     };
 
     if args.in_path.is_file() {
-        parse_file(args.in_path, args.out_path);
+        if let Err(error) = parse_file(&args.in_path, &mut args.out_path.to_owned()) {
+            println!("Parsing error in file {0} - {1}", &args.in_path.to_string_lossy(), error);
+        };
     } else if args.in_path.is_dir() {
-        let dir = args.in_path.read_dir().expect(
-            format!(
-                "Could not open directory {0}",
-                args.in_path.to_str().unwrap(),
-            )
-            .as_str(),
-        );
+        let dir = args.in_path.read_dir();
+        
+        if let Err(error) = dir {
+            println!("Could not open directory {0} - {1}", &args.in_path.to_string_lossy(), error);
+            std::process::exit(1);
+        }
+
         if !args.out_path.is_dir() {
-            std::fs::create_dir(&args.out_path).expect(
-                format!(
-                    "Could not create directory {0}",
-                    args.out_path.to_str().unwrap()
-                )
-                .as_str(),
-            );
+            if let Err(error) = std::fs::create_dir(&args.out_path) {
+                println!("could not create output directory {0} - {1}", &args.out_path.to_string_lossy(), error)
+            }
         }
 
         let handle = thread::spawn(move || {
-            for file in dir {
-                let mut out_name = args.out_path.to_path_buf();
+            for file in dir.unwrap() {
+                let mut out_name = args.out_path.to_owned();
                 out_name.extend([file.as_ref().unwrap().file_name()]);
-                parse_file(file.as_ref().unwrap().path(), out_name);
+                if let Err(error) = parse_file(&file.as_ref().unwrap().path(), &mut out_name) {
+                    println!("Parsing error in file {0} - {1}", &args.in_path.to_string_lossy(), error);
+                }
             }
         });
 
@@ -64,7 +65,7 @@ fn main() {
     println!("Done!");
 }
 
-fn parse_file(in_file: std::path::PathBuf, mut out_file: std::path::PathBuf) -> bool {
+fn parse_file(in_file: &std::path::PathBuf, out_file: &mut std::path::PathBuf) -> Result<(), std::io::Error> {
     let v = vec![
         Element {
             tag: "<h1>$1</h1>".to_string(),
@@ -104,11 +105,7 @@ fn parse_file(in_file: std::path::PathBuf, mut out_file: std::path::PathBuf) -> 
         .starts_with(".")
         || !in_file.exists()
     {
-        println!(
-            "Skipping hidden file {0}",
-            in_file.to_str().unwrap_or("unknown")
-        );
-        return false;
+        return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Skipping hidden file"));
     }
 
     out_file.set_extension("html");
@@ -119,15 +116,15 @@ fn parse_file(in_file: std::path::PathBuf, mut out_file: std::path::PathBuf) -> 
         out_file.to_str().unwrap_or("unknown")
     );
 
-    let mut result = std::fs::read_to_string(in_file).expect("Could not open file");
-
+    let mut response = std::fs::read_to_string(in_file)?;
+    
     println!("Parsing...");
-
+    
     for r in v {
-        result = r.pattern.replace_all(&result, r.tag).to_string();
+        response = r.pattern.replace_all(&response, r.tag).to_string();
     }
-
-    std::fs::write(out_file, result).expect("Could not write file");
-
-    return true;
+    
+    std::fs::write(out_file, response)?;
+    
+    return Ok(());
 }
