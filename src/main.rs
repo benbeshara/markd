@@ -1,5 +1,7 @@
 use regex::Regex;
 use std::thread;
+use std::path::{Path};
+use std::io::Error;
 
 struct Args {
     in_path: std::path::PathBuf,
@@ -8,31 +10,31 @@ struct Args {
 
 struct Element {
     tag: String,
-    pattern: regex::Regex,
+    pattern: Regex,
 }
 
 static HELP_STRING: &str = r#"Usage: markd <input> <output>"#;
 
 fn main() {
-    if std::env::args().len() < 3 {
+    let args: Vec<String> = std::env::args().collect();
+    
+    if args.len() < 3 {
         println!("{0}", HELP_STRING);
         std::process::exit(0);
     }
-
-    let (in_file, out_file) = (
-        std::env::args().nth(1).expect(HELP_STRING),
-        std::env::args().nth(2).expect(HELP_STRING),
-    );
+    
+    let in_file = Path::new(&args[1]);
+    let out_file = Path::new(&args[2]);
     
     println!("{0}\nStarting...", HELP_STRING);
 
     let args = Args {
-        in_path: std::path::PathBuf::from(in_file),
-        out_path: std::path::PathBuf::from(out_file),
+        in_path: in_file.to_owned(),
+        out_path: out_file.to_owned(),
     };
 
     if args.in_path.is_file() {
-        if let Err(error) = parse_file(&args.in_path, &mut args.out_path.to_owned()) {
+        if let Err(error) = parse_file(&args.in_path, &args.out_path) {
             println!("Parsing error in file {0} - {1}", &args.in_path.to_string_lossy(), error);
         };
     } else if args.in_path.is_dir() {
@@ -51,9 +53,8 @@ fn main() {
 
         let handle = thread::spawn(move || {
             for file in dir.unwrap() {
-                let mut out_name = args.out_path.to_owned();
-                out_name.extend([file.as_ref().unwrap().file_name()]);
-                if let Err(error) = parse_file(&file.as_ref().unwrap().path(), &mut out_name) {
+                let out_name = &args.out_path;
+                if let Err(error) = parse_file(&file.as_ref().unwrap().path(), &out_name.join(file.as_ref().unwrap().file_name())) {
                     println!("Parsing error in file {0} - {1}", &args.in_path.to_string_lossy(), error);
                 }
             }
@@ -65,7 +66,7 @@ fn main() {
     println!("Done!");
 }
 
-fn parse_file(in_file: &std::path::PathBuf, out_file: &mut std::path::PathBuf) -> Result<(), std::io::Error> {
+fn parse_file(in_file: &Path, out_file: &Path) -> Result<(), Error> {
     let v = vec![
         Element {
             tag: "<h1>$1</h1>".to_string(),
@@ -102,13 +103,11 @@ fn parse_file(in_file: &std::path::PathBuf, out_file: &mut std::path::PathBuf) -
         .unwrap()
         .to_str()
         .unwrap()
-        .starts_with(".")
+        .starts_with('.')
         || !in_file.exists()
     {
         return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Skipping hidden file"));
     }
-
-    out_file.set_extension("html");
 
     println!(
         "Converting {0} > {1}",
@@ -124,7 +123,6 @@ fn parse_file(in_file: &std::path::PathBuf, out_file: &mut std::path::PathBuf) -
         response = r.pattern.replace_all(&response, r.tag).to_string();
     }
     
-    std::fs::write(out_file, response)?;
-    
-    return Ok(());
+    std::fs::write(out_file.with_extension("html"), response)?;
+    Ok(())
 }
