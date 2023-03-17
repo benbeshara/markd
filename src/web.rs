@@ -12,22 +12,53 @@ pub fn main() {
 
         let path = request.url().strip_prefix('/');
 
-        let parsed = match md_parse::parse_file(path.unwrap()) {
-            Ok(p) => p,
-            Err(e) => {
-                println!("Error! {e}");
-                continue;
-            }
-        };
-
         let header =
             tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html"[..]).unwrap();
 
-        let mut response = Response::from_string(parsed);
+        let mut response: Response<std::io::Cursor<Vec<u8>>>;
+
+        if path.expect("").is_empty() {
+            response = Response::from_string(index());
+        } else {
+            response = Response::from_string(markdown_file(path.unwrap()));
+        }
+
         response.add_header(header);
 
         if let Err(e) = request.respond(response) {
             println!("Response failed! {}", e);
+        }
+    }
+}
+
+fn index() -> String {
+    let file_path = format!("./{}", std::env::var("DATA_DIR").expect("testfiles"));
+    let files = std::path::Path::new(&file_path);
+    let mut res = String::from("");
+    files
+        .read_dir()
+        .expect("Could not read directory")
+        .for_each(|file| {
+            if let Ok(file) = file {
+                res.push_str(
+                    format!(
+                        "<a href=\"{1}/{0}\">{0}</a><br />",
+                        file.file_name().to_str().unwrap(),
+                        file_path
+                    )
+                    .as_str(),
+                );
+            }
+        });
+    res
+}
+
+fn markdown_file(path: &str) -> String {
+    match md_parse::parse_file(path) {
+        Ok(p) => p,
+        Err(e) => {
+            println!("Error! {e}");
+            String::from("404")
         }
     }
 }
