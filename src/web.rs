@@ -1,4 +1,5 @@
 use crate::md_parse;
+use regex::Regex;
 use tiny_http::{Response, Server};
 
 pub fn main() {
@@ -40,21 +41,17 @@ fn index() -> String {
         .expect("Could not read directory")
         .for_each(|file| {
             if let Ok(file) = file {
-                res.push_str(
-                    format!(
-                        "<a href=\"{1}/{0}\">{0}</a><br />",
-                        file.file_name().to_str().unwrap(),
-                        file_path
-                    )
-                    .as_str(),
-                );
+                let mut file_name = file.file_name().into_string().unwrap();
+                file_name = String::from(Regex::new(".[^.]+$").unwrap().replace(&file_name, ""));
+                res.push_str(format!("<a href=\"{0}\">{0}</a><br />", file_name).as_str());
             }
         });
     res
 }
 
 fn markdown_file(path: &str) -> String {
-    match md_parse::parse_file(path) {
+    let file_path = format!("./{}", std::env::var("DATA_DIR").expect("testfiles"));
+    match md_parse::parse_file(format!("{}/{}.md", file_path, path).as_str()) {
         Ok(p) => p,
         Err(e) => {
             println!("Error! {e}");
